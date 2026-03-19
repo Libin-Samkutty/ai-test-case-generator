@@ -1,0 +1,32 @@
+{
+  "_comment": "This file is injected into every test generation as background context. Edit to match your project.",
+  "project": "My Project Name",
+  "version": "1.0.0",
+  "stack": {
+    "frontend": "React, Tailwind CSS",
+    "backend": "Node.js, Express",
+    "database": "PostgreSQL",
+    "infrastructure": "AWS Lambda, S3"
+  },
+  "conventions": {
+    "id_format": "TC-XXX",
+    "priority_levels": ["high", "medium", "low"],
+    "severity_levels": ["S1-Critical", "S2-Major", "S3-Minor", "S4-Trivial"],
+    "environments": ["local", "dev", "staging", "production"],
+    "test_types": ["smoke", "regression", "integration", "e2e"]
+  },
+  "known_risks": [
+    "All API calls are asynchronous — do not assume instant state changes",
+    "Session tokens expire after 30 minutes of inactivity",
+    "File uploads are capped at 10MB"
+  ],
+  "out_of_scope": [
+    "Third-party payment gateway internals",
+    "Email delivery provider SLAs"
+  ],
+  "personas": {
+    "standard_user": "Registered user with default permissions",
+    "admin_user": "User with full admin access",
+    "guest": "Unauthenticated visitor"
+  }
+}

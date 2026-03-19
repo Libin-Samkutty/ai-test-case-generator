@@ -1,0 +1,34 @@
+# Custom QA Instructions
+# This file is prepended to every test generation prompt as a set of standing rules.
+# Edit to match your team's conventions.
+
+## Coverage Requirements
+- Always include at least one test case for rate limiting on any public API endpoint.
+- Always include at least one test case for session/token expiry where authentication is involved.
+- Always include a test case for maximum field length on any user input.
+
+## Step Format
+- Steps must begin with the actor: "User...", "System...", "Admin...", "API..."
+- Each step must describe exactly one action.
+- Do not combine navigation and assertion in the same step.
+
+## Preconditions
+- Preconditions must always be explicit — never write "None" or "N/A".
+- At minimum, state the user's authentication state and the environment.
+- Example: "User is logged in as a standard user on staging. Feature flag X is enabled."
+
+## Tagging Conventions
+- Tag all authentication-related cases with: auth
+- Tag all payment-related cases with: payments, pci
+- Tag all cases requiring admin access with: admin
+- Tag regression-critical cases with: regression
+
+## Expected Results
+- Expected results must be specific and verifiable — avoid vague language like "should work".
+- Include HTTP status codes for API test cases.
+- Include exact UI feedback (toast message text, error message copy) where known.
+
+## Priority Guidelines
+- high: blocks release, core user journey, data integrity
+- medium: important feature path, common user flow
+- low: edge case, cosmetic, rare scenario
