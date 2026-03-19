@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 
 // ─── Provider + Model Config ────────────────────────────────────────────────
 const PROVIDERS = {
@@ -62,6 +62,19 @@ const TIER_STYLE = {
   fast:      { label: "fast",      color: "#4ade80" },
   reasoning: { label: "reasoning", color: "#a78bfa" },
 };
+
+// ─── Generation Presets ───────────────────────────────────────────────────────
+// count/includeEdge = null means "don't override — user controls manually"
+const PROFILES = [
+  { key: "smoke",      label: "Smoke",      count: 5,    includeEdge: false, instrSuffix: "Focus on the most critical happy-path flows only. Keep steps concise." },
+  { key: "regression", label: "Regression", count: 20,   includeEdge: true,  instrSuffix: "Provide broad coverage across positive, negative, edge, and boundary cases." },
+  { key: "security",   label: "Security",   count: 10,   includeEdge: true,  instrSuffix: "Emphasise authentication, authorisation, injection, and data-validation attack vectors." },
+  { key: "custom",     label: "Custom",     count: null, includeEdge: null,  instrSuffix: null },
+];
+
+const LS_SESSION = "testgen_session_v1";
+const LS_KEY     = "testgen_apikey_v1";
+const LS_HISTORY = "testgen_history_v1";
 
 // ─── Styles ──────────────────────────────────────────────────────────────────
 const styles = `
@@ -269,6 +282,70 @@ const styles = `
   ::-webkit-scrollbar{width:4px;height:4px;}
   ::-webkit-scrollbar-track{background:transparent;}
   ::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px;}
+
+  /* Generation presets */
+  .preset-row{display:flex;gap:5px;padding:10px 13px 0;}
+  .preset-btn{flex:1;font-family:var(--mono);font-size:10px;padding:5px 4px;border-radius:4px;border:1px solid var(--border);background:var(--surface2);color:var(--text3);cursor:pointer;transition:all .12s;text-align:center;}
+  .preset-btn:hover{border-color:var(--border2);color:var(--text2);}
+  .preset-btn.active{border-color:var(--accent);color:var(--accent);background:var(--accent-dim);}
+  .preset-custom-area{margin:8px 13px 0;background:var(--surface2);border:1px solid var(--border);border-radius:4px;color:var(--text);font-family:var(--mono);font-size:11px;padding:7px 9px;outline:none;resize:vertical;min-height:58px;width:calc(100% - 26px);line-height:1.5;}
+  .preset-custom-area:focus{border-color:var(--accent);}
+  .preset-custom-area::placeholder{color:var(--text3);}
+
+  /* Remember key */
+  .remember-key-row{display:flex;align-items:center;gap:6px;margin-top:6px;}
+  .remember-key-row input[type=checkbox]{accent-color:var(--accent);cursor:pointer;}
+  .remember-key-row label{font-family:var(--mono);font-size:10px;color:var(--text3);cursor:pointer;}
+
+  /* Inline context textareas (memory / instructions) */
+  .inline-or{font-family:var(--mono);font-size:10px;color:var(--text3);text-align:center;padding:4px 0 2px;}
+  .inline-context-area{margin:0 12px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:4px;color:var(--text);font-family:var(--mono);font-size:11px;padding:7px 9px;outline:none;resize:vertical;min-height:68px;width:calc(100% - 24px);line-height:1.5;}
+  .inline-context-area:focus{border-color:var(--border2);}
+  .inline-context-area::placeholder{color:var(--text3);}
+
+  /* Add-more button */
+  .add-more-btn{font-family:var(--mono);font-size:10px;padding:5px 11px;border-radius:4px;border:1px solid var(--border);background:var(--surface2);color:var(--text3);cursor:pointer;transition:all .12s;white-space:nowrap;}
+  .add-more-btn:hover:not(:disabled){border-color:var(--accent);color:var(--accent);}
+  .add-more-btn:disabled{opacity:0.4;cursor:not-allowed;}
+
+  /* Inline field editing on cards */
+  .tc-inline-field{background:var(--surface2);border:1px solid var(--border2);border-radius:3px;color:var(--text);font-family:var(--mono);font-size:11px;padding:4px 7px;outline:none;width:100%;line-height:1.5;}
+  .tc-inline-field:focus{border-color:var(--accent);}
+  .tc-inline-select{background:var(--surface2);border:1px solid var(--border2);border-radius:3px;color:var(--text);font-family:var(--mono);font-size:11px;padding:4px 6px;outline:none;cursor:pointer;}
+  .tc-inline-select:focus{border-color:var(--accent);}
+  .steps-editor{display:flex;flex-direction:column;gap:5px;}
+  .step-edit-row{display:flex;gap:5px;align-items:flex-start;}
+  .step-edit-row textarea{flex:1;background:var(--surface2);border:1px solid var(--border2);border-radius:3px;color:var(--text);font-family:var(--mono);font-size:11px;padding:4px 7px;outline:none;resize:vertical;min-height:36px;line-height:1.5;}
+  .step-edit-row textarea:focus{border-color:var(--accent);}
+  .step-rm-btn{background:none;border:1px solid var(--border);border-radius:3px;color:var(--text3);cursor:pointer;padding:3px 6px;font-size:11px;line-height:1;flex-shrink:0;}
+  .step-rm-btn:hover{border-color:var(--red);color:var(--red);}
+  .add-step-btn{font-family:var(--mono);font-size:10px;padding:4px 10px;border-radius:3px;border:1px dashed var(--border2);background:transparent;color:var(--text3);cursor:pointer;}
+  .add-step-btn:hover{border-color:var(--accent);color:var(--accent);}
+  .tags-editor{display:flex;flex-wrap:wrap;gap:5px;align-items:center;}
+  .tag-edit-pill{display:flex;align-items:center;gap:3px;font-family:var(--mono);font-size:10px;padding:2px 6px;border-radius:3px;border:1px solid var(--border2);color:var(--text3);}
+  .tag-rm-btn{background:none;border:none;color:var(--text3);cursor:pointer;padding:0 1px;font-size:11px;line-height:1;}
+  .tag-rm-btn:hover{color:var(--red);}
+  .add-tag-input{background:var(--surface2);border:1px dashed var(--border2);border-radius:3px;color:var(--text);font-family:var(--mono);font-size:10px;padding:2px 7px;outline:none;width:90px;}
+  .add-tag-input:focus{border-color:var(--accent);}
+  .inline-edit-actions{display:flex;gap:6px;margin-top:10px;padding-top:8px;border-top:1px solid var(--border);}
+  .inline-save-btn{padding:5px 14px;background:var(--accent);color:#0a0d0b;font-family:var(--mono);font-size:11px;font-weight:600;border:none;border-radius:4px;cursor:pointer;}
+  .inline-save-btn:hover{background:var(--accent2);}
+  .inline-discard-btn{padding:5px 10px;background:transparent;color:var(--text3);font-family:var(--mono);font-size:11px;border:1px solid var(--border);border-radius:4px;cursor:pointer;}
+  .inline-discard-btn:hover{border-color:var(--border2);color:var(--text2);}
+  .tc-delete-btn{font-family:var(--mono);font-size:10px;padding:3px 7px;border-radius:3px;border:1px solid var(--border);background:transparent;color:var(--text3);cursor:pointer;margin-left:auto;}
+  .tc-delete-btn:hover{border-color:var(--red);color:var(--red);}
+
+  /* Session history */
+  .history-list{display:flex;flex-direction:column;}
+  .history-entry{display:flex;align-items:center;gap:8px;padding:9px 13px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .12s;}
+  .history-entry:last-child{border-bottom:none;}
+  .history-entry:hover{background:var(--surface2);}
+  .history-entry-feature{font-family:var(--mono);font-size:11px;color:var(--text);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .history-entry-meta{font-family:var(--mono);font-size:10px;color:var(--text3);white-space:nowrap;}
+  .history-entry-count{font-family:var(--mono);font-size:10px;color:var(--accent);}
+  .history-clear-btn{font-family:var(--mono);font-size:10px;padding:2px 8px;border-radius:3px;border:1px solid var(--border);background:transparent;color:var(--text3);cursor:pointer;}
+  .history-clear-btn:hover{border-color:var(--red);color:var(--red);}
+  .history-empty{font-family:var(--mono);font-size:11px;color:var(--text3);padding:14px 13px;text-align:center;}
 `;
 
 // ─── API Callers ──────────────────────────────────────────────────────────────
@@ -406,6 +483,22 @@ function exportCSV(data) {
   const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(new Blob([csv], { type: "text/csv" })), download: `test-cases-${Date.now()}.csv` }); a.click();
 }
 
+function exportTestRail(data) {
+  const dl = (rows, name) => { const csv = rows.map(r => r.map(c => `"${String(c||"").replace(/"/g,'""')}"`).join(",")).join("\n"); const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(new Blob([csv], { type: "text/csv" })), download: name }); a.click(); };
+  const header = ["Title","Section","Template","Type","Priority","Estimate","References","Custom Steps","Custom Steps (Expected)"];
+  const typeMap = { positive:"Functional", negative:"Functional", edge:"Functional", security:"Security", performance:"Performance" };
+  const prioMap = { high:"1 - High", medium:"2 - Medium", low:"3 - Low" };
+  const rows = data.test_cases.map(tc => [tc.title, data.feature, "Test Case (Steps)", typeMap[tc.type]||"Functional", prioMap[tc.priority]||"2 - Medium", "", tc.preconditions||"", tc.steps.join("\n"), tc.expected_result]);
+  dl([header,...rows], `test-cases-testrail-${Date.now()}.csv`);
+}
+function exportXRAY(data) {
+  const dl = (rows, name) => { const csv = rows.map(r => r.map(c => `"${String(c||"").replace(/"/g,'""')}"`).join(",")).join("\n"); const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(new Blob([csv], { type: "text/csv" })), download: name }); a.click(); };
+  const header = ["Issue ID","Issue Type","Summary","Description","Steps","Steps (Expected Result)","Labels","Priority"];
+  const prioMap = { high:"High", medium:"Medium", low:"Low" };
+  const rows = data.test_cases.map(tc => [tc.id, "Test", tc.title, tc.preconditions||"", tc.steps.join("\n"), tc.expected_result, (tc.tags||[]).join(" "), prioMap[tc.priority]||"Medium"]);
+  dl([header,...rows], `test-cases-xray-${Date.now()}.csv`);
+}
+
 // ─── FileDrop ─────────────────────────────────────────────────────────────────
 function FileDrop({ label, accept, file, onFile, mini = false }) {
   const ref = useRef();
@@ -430,42 +523,123 @@ function FileDrop({ label, accept, file, onFile, mini = false }) {
 }
 
 // ─── TestCaseCard ─────────────────────────────────────────────────────────────
-function TestCaseCard({ tc, onModify, isModifying }) {
-  const [expanded, setExpanded] = useState(false);
-  const [editing, setEditing] = useState(false);
+function TestCaseCard({ tc, onModify, isModifying, onUpdate, onDelete }) {
+  const [expanded, setExpanded]     = useState(false);
+  const [aiEdit, setAiEdit]         = useState(false);   // AI-assisted edit zone
+  const [inlineEdit, setInlineEdit] = useState(false);   // direct field editing
   const [instruction, setInstruction] = useState("");
+  const [draft, setDraft]           = useState(null);    // copy of tc fields while inline-editing
+  const [newTag, setNewTag]         = useState("");
   const tcNum = parseInt(tc.id.replace("TC-",""), 10);
 
+  const startInline = () => {
+    setDraft({ ...tc, steps: [...tc.steps], tags: [...(tc.tags||[])] });
+    setInlineEdit(true); setExpanded(true); setAiEdit(false);
+  };
+  const discardInline = () => { setInlineEdit(false); setDraft(null); setNewTag(""); };
+  const saveInline = () => { onUpdate(tc.id, draft); setInlineEdit(false); setDraft(null); setNewTag(""); };
+
+  const updateStep = (i, val) => setDraft(d => { const steps=[...d.steps]; steps[i]=val; return {...d,steps}; });
+  const removeStep = i => setDraft(d => { const steps=d.steps.filter((_,idx)=>idx!==i); return {...d,steps}; });
+  const addStep    = () => setDraft(d => ({ ...d, steps:[...d.steps,""] }));
+  const removeTag  = t => setDraft(d => ({ ...d, tags:d.tags.filter(x=>x!==t) }));
+  const commitTag  = () => { const t=newTag.trim(); if(t&&!draft.tags.includes(t)){setDraft(d=>({...d,tags:[...d.tags,t]}));} setNewTag(""); };
+
+  const cur = inlineEdit ? draft : tc;
+
   return (
-    <div className={`tc-card${expanded?" expanded":""}${editing?" editing":""}`}>
+    <div className={`tc-card${expanded?" expanded":""}${aiEdit?" editing":""}`}>
       <div className="tc-card-header">
         <span className="tc-id">{tc.id}</span>
-        <span className={`tc-type-pill type-${tc.type}`}>{tc.type}</span>
-        <span className="tc-title" onClick={()=>setExpanded(x=>!x)}>{tc.title}</span>
-        <span className={`tc-priority priority-${tc.priority}`}>{tc.priority}</span>
-        <button className={`tc-edit-btn${editing?" active":""}`} onClick={e=>{e.stopPropagation();setEditing(true);setExpanded(true);}}>✎ edit</button>
-        <span className="tc-chevron" onClick={()=>setExpanded(x=>!x)}>▼</span>
+        {inlineEdit
+          ? <select className="tc-inline-select" value={draft.type} onChange={e=>setDraft(d=>({...d,type:e.target.value}))}>
+              {["positive","negative","edge","security","performance"].map(t=><option key={t}>{t}</option>)}
+            </select>
+          : <span className={`tc-type-pill type-${tc.type}`}>{tc.type}</span>}
+        {inlineEdit
+          ? <input className="tc-inline-field" style={{flex:1}} value={draft.title} onChange={e=>setDraft(d=>({...d,title:e.target.value}))} />
+          : <span className="tc-title" onClick={()=>setExpanded(x=>!x)}>{tc.title}</span>}
+        {inlineEdit
+          ? <select className="tc-inline-select" value={draft.priority} onChange={e=>setDraft(d=>({...d,priority:e.target.value}))}>
+              {["high","medium","low"].map(p=><option key={p}>{p}</option>)}
+            </select>
+          : <span className={`tc-priority priority-${tc.priority}`}>{tc.priority}</span>}
+        <button className="tc-edit-btn" onClick={e=>{e.stopPropagation();startInline();}} title="Edit fields directly">✏</button>
+        <button className={`tc-edit-btn${aiEdit?" active":""}`} onClick={e=>{e.stopPropagation();setAiEdit(true);setExpanded(true);setInlineEdit(false);}} title="AI-assisted edit">✦ AI</button>
+        {!inlineEdit && <span className="tc-chevron" onClick={()=>setExpanded(x=>!x)}>▼</span>}
       </div>
+
       <div className="tc-body">
-        {tc.preconditions&&<div><div className="tc-section-label">Preconditions</div><div className="tc-preconditions">{tc.preconditions}</div></div>}
+        {/* Preconditions */}
+        <div>
+          <div className="tc-section-label">Preconditions</div>
+          {inlineEdit
+            ? <input className="tc-inline-field" value={draft.preconditions||""} placeholder="None" onChange={e=>setDraft(d=>({...d,preconditions:e.target.value}))} />
+            : cur.preconditions ? <div className="tc-preconditions">{cur.preconditions}</div> : <div style={{color:"var(--text3)",fontSize:12}}>—</div>}
+        </div>
+
+        {/* Steps */}
         <div>
           <div className="tc-section-label">Steps</div>
-          <ol className="tc-steps">{tc.steps.map((s,i)=><li key={i}><span className="tc-step-num">{String(i+1).padStart(2,"0")}.</span><span>{s}</span></li>)}</ol>
+          {inlineEdit
+            ? <div className="steps-editor">
+                {draft.steps.map((s,i)=>(
+                  <div key={i} className="step-edit-row">
+                    <span style={{fontFamily:"var(--mono)",fontSize:10,color:"var(--text3)",paddingTop:6,minWidth:20}}>{i+1}.</span>
+                    <textarea value={s} onChange={e=>updateStep(i,e.target.value)} rows={2}/>
+                    <button className="step-rm-btn" onClick={()=>removeStep(i)}>×</button>
+                  </div>
+                ))}
+                <button className="add-step-btn" onClick={addStep}>+ Add step</button>
+              </div>
+            : <ol className="tc-steps">{cur.steps.map((s,i)=><li key={i}><span className="tc-step-num">{String(i+1).padStart(2,"0")}.</span><span>{s}</span></li>)}</ol>}
         </div>
-        <div><div className="tc-section-label">Expected Result</div><div className="tc-expected">{tc.expected_result}</div></div>
-        {tc.tags?.length>0&&<div><div className="tc-section-label">Tags</div><div className="tc-tags">{tc.tags.map(t=><span key={t} className="tc-tag">{t}</span>)}</div></div>}
+
+        {/* Expected result */}
+        <div>
+          <div className="tc-section-label">Expected Result</div>
+          {inlineEdit
+            ? <textarea className="tc-inline-field" style={{minHeight:58,resize:"vertical"}} value={draft.expected_result} onChange={e=>setDraft(d=>({...d,expected_result:e.target.value}))} />
+            : <div className="tc-expected">{cur.expected_result}</div>}
+        </div>
+
+        {/* Tags */}
+        <div>
+          <div className="tc-section-label">Tags</div>
+          {inlineEdit
+            ? <div className="tags-editor">
+                {draft.tags.map(t=>(
+                  <span key={t} className="tag-edit-pill">{t}<button className="tag-rm-btn" onClick={()=>removeTag(t)}>×</button></span>
+                ))}
+                <input className="add-tag-input" value={newTag} placeholder="+ tag" onChange={e=>setNewTag(e.target.value)}
+                  onKeyDown={e=>{if(e.key==="Enter"||e.key===","){e.preventDefault();commitTag();}}} onBlur={commitTag}/>
+              </div>
+            : cur.tags?.length>0 ? <div className="tc-tags">{cur.tags.map(t=><span key={t} className="tc-tag">{t}</span>)}</div>
+            : <div style={{color:"var(--text3)",fontSize:12}}>—</div>}
+        </div>
+
+        {/* Inline edit action bar */}
+        {inlineEdit && (
+          <div className="inline-edit-actions">
+            <button className="inline-save-btn" onClick={saveInline}>✓ Save</button>
+            <button className="inline-discard-btn" onClick={discardInline}>Discard</button>
+            <button className="tc-delete-btn" onClick={()=>{ if(window.confirm(`Delete ${tc.id}?`)) onDelete(tc.id); }}>🗑 Delete</button>
+          </div>
+        )}
       </div>
-      {editing&&(
+
+      {/* AI edit zone */}
+      {aiEdit&&(
         <div className="edit-zone">
-          <div className="edit-zone-label">✎ Modify {tc.id} only — all other cases stay unchanged</div>
+          <div className="edit-zone-label">✦ AI Modify {tc.id} — all other cases stay unchanged</div>
           <textarea className="edit-textarea"
             placeholder={"Describe what to change...\n\nExamples:\n• \"Add a step to check the confirmation email\"\n• \"Change priority to high and add a security tag\"\n• \"Split into null and empty string cases separately\""}
             value={instruction} onChange={e=>setInstruction(e.target.value)} autoFocus/>
           <div className="edit-actions">
-            <button className="edit-apply-btn" onClick={async()=>{if(!instruction.trim()||isModifying)return;await onModify(tc.id,instruction);setEditing(false);setInstruction("");}} disabled={isModifying||!instruction.trim()}>
+            <button className="edit-apply-btn" onClick={async()=>{if(!instruction.trim()||isModifying)return;await onModify(tc.id,instruction);setAiEdit(false);setInstruction("");}} disabled={isModifying||!instruction.trim()}>
               {isModifying?<><div className="edit-spinner"/>Updating...</>:"↻ Apply changes"}
             </button>
-            <button className="edit-cancel-btn" onClick={()=>{setEditing(false);setInstruction("");}}>Cancel</button>
+            <button className="edit-cancel-btn" onClick={()=>{setAiEdit(false);setInstruction("");}}>Cancel</button>
             {tcNum>1&&<span className="edit-hint">TC-{String(tcNum-1).padStart(3,"0")} and TC-{String(tcNum+1).padStart(3,"0")} untouched</span>}
           </div>
         </div>
@@ -480,6 +654,7 @@ export default function App() {
   const [model, setModel] = useState(PROVIDERS.anthropic.models[0].id);
   const [apiKey, setApiKey] = useState("");
   const [showKey, setShowKey] = useState(false);
+  const [rememberKey, setRememberKey] = useState(() => !!localStorage.getItem(LS_KEY));
   const [spec, setSpec] = useState("");
   const [specFile, setSpecFile] = useState(null);
   const [memoryFile, setMemoryFile] = useState(null);
@@ -489,12 +664,45 @@ export default function App() {
   const [instrContent, setInstrContent] = useState("");
   const [instrPreview, setInstrPreview] = useState("");
   const [config, setConfig] = useState({ count: 10, includeEdge: true });
+  const [activeProfile, setActiveProfile] = useState(null);
+  const [customProfileInstr, setCustomProfileInstr] = useState("");
   const [loading, setLoading] = useState(false);
+  const [addingMore, setAddingMore] = useState(false);
   const [modifying, setModifying] = useState(null);
   const [result, setResult] = useState(null);
   const [error, setError] = useState("");
   const [filter, setFilter] = useState("all");
   const [toast, setToast] = useState("");
+  const [history, setHistory] = useState(() => { try { return JSON.parse(localStorage.getItem(LS_HISTORY)||"[]"); } catch { return []; } });
+
+  // ── Restore session on mount ──
+  useEffect(() => {
+    const saved = localStorage.getItem(LS_KEY);
+    if (saved) setApiKey(saved);
+    try {
+      const s = JSON.parse(localStorage.getItem(LS_SESSION)||"null");
+      if (s) {
+        if (s.spec)     setSpec(s.spec);
+        if (s.result)   setResult(s.result);
+        if (s.config)   setConfig(s.config);
+        if (s.provider && PROVIDERS[s.provider]) { setProvider(s.provider); setModel(s.model || PROVIDERS[s.provider].models[0].id); }
+      }
+    } catch { /* ignore corrupt session */ }
+  }, []);
+
+  // ── Persist session on change ──
+  useEffect(() => {
+    localStorage.setItem(LS_SESSION, JSON.stringify({ spec, result, config, provider, model }));
+  }, [spec, result, config, provider, model]);
+
+  // ── Persist API key when opt-in toggled ──
+  useEffect(() => {
+    if (rememberKey) localStorage.setItem(LS_KEY, apiKey);
+    else             localStorage.removeItem(LS_KEY);
+  }, [rememberKey, apiKey]);
+
+  // ── Persist history ──
+  useEffect(() => { localStorage.setItem(LS_HISTORY, JSON.stringify(history)); }, [history]);
 
   const showToast = msg => { setToast(msg); setTimeout(() => setToast(""), 2800); };
   const handleProvider = p => { setProvider(p); setModel(PROVIDERS[p].models[0].id); };
@@ -502,17 +710,57 @@ export default function App() {
   const handleMemoryFile = async f => { const t = await readFileText(f); setMemoryContent(t); setMemoryFile(f); setMemoryPreview(t.slice(0,280)+(t.length>280?"…":"")); };
   const handleInstrFile = async f => { const t = await readFileText(f); setInstrContent(t); setInstrFile(f); setInstrPreview(t.slice(0,280)+(t.length>280?"…":"")); };
 
+  const applyProfile = p => {
+    setActiveProfile(p.key);
+    if (p.count !== null)       setConfig(c => ({ ...c, count: p.count, includeEdge: p.includeEdge }));
+    if (p.instrSuffix !== null) setInstrContent(p.instrSuffix);
+    else                        setInstrContent("");
+  };
+
+  const saveToHistory = parsed => {
+    const entry = { id: Date.now(), ts: new Date().toLocaleString(), feature: parsed.feature, count: parsed.test_cases.length, result: parsed, spec };
+    setHistory(h => [entry, ...h].slice(0, 10));
+  };
+
+  const handleUpdate = (tcId, updated) => {
+    setResult(prev => ({ ...prev, test_cases: prev.test_cases.map(t => t.id === tcId ? { ...updated, id: tcId } : t) }));
+    showToast(`${tcId} updated`);
+  };
+
+  const handleDelete = tcId => {
+    setResult(prev => ({ ...prev, test_cases: prev.test_cases.filter(t => t.id !== tcId) }));
+    showToast(`${tcId} deleted`);
+  };
+
   const generate = async () => {
     if (!spec.trim()) { setError("Please provide a spec, PRD, or acceptance criteria."); return; }
     if (!apiKey.trim()) { setError("Please enter your API key."); return; }
     const n = Number(config.count); if (!n || n < 1 || n > 100) { setError("Count must be 1–100."); return; }
+    const effectiveInstr = (instrContent||"") + (activeProfile==="custom" && customProfileInstr ? "\n"+customProfileInstr : "");
     setError(""); setLoading(true); setResult(null);
     try {
-      const parsed = await callModel(provider, apiKey.trim(), model, buildGeneratePrompt({ spec: spec.trim(), memory: memoryContent||null, instructions: instrContent||null, config: { ...config, count: n } }));
+      const parsed = await callModel(provider, apiKey.trim(), model, buildGeneratePrompt({ spec: spec.trim(), memory: memoryContent||null, instructions: effectiveInstr||null, config: { ...config, count: n } }));
       if (!parsed.test_cases?.length) throw new Error("No test cases returned. Try a more detailed spec.");
-      setResult(parsed); setFilter("all");
+      setResult(parsed); setFilter("all"); saveToHistory(parsed);
     } catch (e) { setError(e.message || "Something went wrong."); }
     finally { setLoading(false); }
+  };
+
+  const addMore = async () => {
+    if (!spec.trim() || !apiKey.trim() || !result) return;
+    const n = Math.max(1, Math.min(20, Number(config.count)));
+    const existingIds = result.test_cases.map(t => t.id).join(", ");
+    const extraInstr = `Do NOT repeat these existing IDs: ${existingIds}. Generate ${n} NEW test cases only.`;
+    setError(""); setAddingMore(true);
+    try {
+      const parsed = await callModel(provider, apiKey.trim(), model, buildGeneratePrompt({ spec: spec.trim(), memory: memoryContent||null, instructions: (instrContent||"") + "\n" + extraInstr, config: { ...config, count: n } }));
+      if (!parsed.test_cases?.length) throw new Error("No additional test cases returned.");
+      const offset = result.test_cases.length;
+      const renumbered = parsed.test_cases.map((tc, i) => ({ ...tc, id: `TC-${String(offset+i+1).padStart(3,"0")}` }));
+      setResult(prev => ({ ...prev, test_cases: [...prev.test_cases, ...renumbered] }));
+      showToast(`Added ${renumbered.length} more test cases`);
+    } catch (e) { setError(e.message || "Something went wrong."); }
+    finally { setAddingMore(false); }
   };
 
   const handleModify = async (tcId, instruction) => {
@@ -602,13 +850,18 @@ export default function App() {
                     ))}
                   </div>
                   <div className="export-group">
+                    <button className="add-more-btn" disabled={loading||addingMore} onClick={addMore} title="Generate more and append to current set">
+                      {addingMore?<><div className="spinner" style={{width:10,height:10,borderTopColor:"var(--accent)"}}/><span> Adding...</span></>:"＋ More"}
+                    </button>
                     <button className="export-btn" onClick={()=>{exportJSON(result);showToast("Exported JSON");}}>↓ JSON</button>
                     <button className="export-btn" onClick={()=>{exportMarkdown(result);showToast("Exported MD");}}>↓ MD</button>
                     <button className="export-btn" onClick={()=>{exportCSV(result);showToast("Exported CSV");}}>↓ CSV</button>
+                    <button className="export-btn" onClick={()=>{exportTestRail(result);showToast("Exported TestRail CSV");}}>↓ TestRail</button>
+                    <button className="export-btn" onClick={()=>{exportXRAY(result);showToast("Exported XRAY CSV");}}>↓ XRAY</button>
                   </div>
                 </div>
                 <div className="tc-grid">
-                  {filteredCases.map(tc=><TestCaseCard key={tc.id} tc={tc} onModify={handleModify} isModifying={modifying===tc.id}/>)}
+                  {filteredCases.map(tc=><TestCaseCard key={tc.id} tc={tc} onModify={handleModify} isModifying={modifying===tc.id} onUpdate={handleUpdate} onDelete={handleDelete}/>)}
                 </div>
               </div>
             )}
@@ -681,6 +934,10 @@ export default function App() {
                     value={apiKey} onChange={e=>setApiKey(e.target.value)} />
                   <button className="key-toggle" onClick={()=>setShowKey(x=>!x)}>{showKey?"hide":"show"}</button>
                 </div>
+                <div className="remember-key-row">
+                  <input type="checkbox" id="rememberKey" checked={rememberKey} onChange={e=>setRememberKey(e.target.checked)}/>
+                  <label htmlFor="rememberKey">Remember key in browser</label>
+                </div>
               </div>
             </div>
 
@@ -689,6 +946,11 @@ export default function App() {
               <div className="panel-header"><span className="panel-title">Memory File</span><span className="panel-badge">optional</span></div>
               <FileDrop label="memory.json / context.txt" accept=".json,.txt,.md" file={memoryFile} onFile={handleMemoryFile} mini />
               {memoryPreview && <div className="mini-preview">{memoryPreview}</div>}
+              <div className="inline-or">— or type below —</div>
+              <textarea className="inline-context-area"
+                placeholder={"Paste context, domain knowledge, or project notes...\n\nExample:\n  Project: Payment API\n  Stack: Node.js, PostgreSQL\n  Risks: async webhooks, idempotency"}
+                value={memoryContent}
+                onChange={e=>{ setMemoryContent(e.target.value); setMemoryPreview(e.target.value.slice(0,280)+(e.target.value.length>280?"…":"")); }}/>
             </div>
 
             {/* Instructions */}
@@ -696,11 +958,29 @@ export default function App() {
               <div className="panel-header"><span className="panel-title">Custom Instructions</span><span className="panel-badge">optional</span></div>
               <FileDrop label="instructions.txt / rules.md" accept=".txt,.md" file={instrFile} onFile={handleInstrFile} mini />
               {instrPreview && <div className="mini-preview">{instrPreview}</div>}
+              <div className="inline-or">— or type below —</div>
+              <textarea className="inline-context-area"
+                placeholder={"Add QA rules or constraints...\n\nExample:\n  Always test rate limiting on API endpoints.\n  Tag auth cases with 'auth'.\n  Steps must start with the actor."}
+                value={instrContent}
+                onChange={e=>{ setInstrContent(e.target.value); setInstrPreview(e.target.value.slice(0,280)+(e.target.value.length>280?"…":"")); }}/>
             </div>
 
             {/* Config */}
             <div className="panel">
               <div className="panel-header"><span className="panel-title">Generation Config</span></div>
+
+              {/* Presets */}
+              <div className="preset-row">
+                {PROFILES.map(p=>(
+                  <button key={p.key} className={`preset-btn${activeProfile===p.key?" active":""}`} onClick={()=>applyProfile(p)}>{p.label}</button>
+                ))}
+              </div>
+              {activeProfile==="custom" && (
+                <textarea className="preset-custom-area"
+                  placeholder="Describe your custom focus or coverage requirements..."
+                  value={customProfileInstr} onChange={e=>setCustomProfileInstr(e.target.value)}/>
+              )}
+
               <div className="config-grid">
                 <div className="config-row">
                   <span className="config-label">Number of test cases</span>
@@ -714,10 +994,31 @@ export default function App() {
                   </label>
                 </div>
               </div>
-              <button className="generate-btn" onClick={generate} disabled={loading}>
+              <button className="generate-btn" onClick={generate} disabled={loading||addingMore}>
                 {loading ? <><div className="spinner"/><span>Generating...</span></> : "⚡ Generate Test Cases"}
               </button>
               {loading && <div className="progress-bar"><div className="progress-fill"/></div>}
+            </div>
+
+            {/* Session History */}
+            <div className="panel">
+              <div className="panel-header">
+                <span className="panel-title">History</span>
+                {history.length>0 && <button className="history-clear-btn" onClick={()=>{if(window.confirm("Clear all history?"))setHistory([]);}}>clear</button>}
+              </div>
+              {history.length===0
+                ? <div className="history-empty">No sessions yet — generate to save.</div>
+                : <div className="history-list">
+                    {history.map(h=>(
+                      <div key={h.id} className="history-entry" onClick={()=>{setResult(h.result);setSpec(h.spec);setFilter("all");showToast(`Restored: ${h.feature}`);}}>
+                        <div style={{flex:1,minWidth:0}}>
+                          <div className="history-entry-feature">{h.feature}</div>
+                          <div className="history-entry-meta">{h.ts}</div>
+                        </div>
+                        <span className="history-entry-count">{h.count} TCs</span>
+                      </div>
+                    ))}
+                  </div>}
             </div>
 
           </div>

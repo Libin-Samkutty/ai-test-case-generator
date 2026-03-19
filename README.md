@@ -8,12 +8,18 @@ An AI-powered test case generator for QA engineers. Paste a spec, PRD, or accept
 
 - **Multi-provider** — Anthropic (Claude), OpenAI (GPT), Google (Gemini), OpenRouter (all providers with one key)
 - **Spec input** — paste directly or upload `.txt` / `.md` files
-- **Optional memory file** — inject project context, domain knowledge, or prior session notes into every generation
+- **Generation presets** — one-click Smoke, Regression, Security, or Custom profiles
+- **Session persistence** — spec, config, and results survive page refresh automatically
+- **Session history** — last 10 generations saved; click any entry to restore it
+- **Optional memory** — inject project context via file upload or inline text
 - **Optional custom instructions** — enforce QA conventions, naming rules, or coverage requirements
 - **Configurable generation** — set exact test case count (1–100), toggle edge/security coverage
-- **Selective edit** — modify a single test case with plain-English instructions; all others stay untouched
+- **Incremental generation** — add more test cases to an existing set without replacing it
+- **Inline manual editing** — click ✏ on any card to edit fields directly (no AI call, no tokens)
+- **AI-assisted edit** — click ✦ AI on any card for plain-English AI modifications to a single case
+- **Delete test cases** — remove individual cases from the set in inline edit mode
 - **Filter by type** — positive, negative, edge, security, performance
-- **Export** — JSON, Markdown, CSV
+- **Export** — JSON, Markdown, CSV, TestRail CSV, XRAY/Jira CSV
 
 ---
 
@@ -71,11 +77,86 @@ testgen/
 
 ---
 
-## Memory File
+## Session Persistence
 
-An optional JSON or plain-text file injected into every generation prompt as background context. Useful for encoding project-specific knowledge that shouldn't be re-pasted every time.
+Your work is saved automatically. Every time the spec, config, or generated results change, they are written to `localStorage`. On the next page load, everything is restored — no manual saving needed.
 
-**Example `memory.json`:**
+**What persists across refresh:**
+- Specification text
+- Provider, model, and generation config
+- All generated and manually edited test cases
+
+**API key (opt-in):** Check "Remember key in browser" below the key input to persist it in `localStorage`. Leave it unchecked to keep the key in memory only (cleared on refresh).
+
+---
+
+## Generation Presets
+
+Four preset profiles are available above the config inputs:
+
+| Preset | Count | Edge/Security | Focus |
+|---|---|---|---|
+| **Smoke** | 5 | Off | Critical happy-path flows only |
+| **Regression** | 20 | On | Full coverage: positive, negative, edge, boundary |
+| **Security** | 10 | On | Auth, injection, data-validation attack vectors |
+| **Custom** | Manual | Manual | Free-form — add your own focus instructions |
+
+Clicking a preset pre-fills the count and edge toggle and injects a focus instruction. Selecting **Custom** shows a free-text field for your own instructions; you still control count and edge toggle manually.
+
+---
+
+## Session History
+
+The last 10 generations are saved automatically in `localStorage`. The **History** panel in the sidebar lists each entry with the feature name, timestamp, and test case count.
+
+- Click any entry to **restore** that session (spec + all test cases)
+- Click **clear** to wipe all history
+
+---
+
+## Incremental Generation ("Add More")
+
+After generating an initial set, click **＋ More** in the output toolbar. This sends a new generation request that avoids repeating any existing test case IDs and appends the results with correctly renumbered IDs (`TC-00N` continuing from the last).
+
+Use this to grow a suite iteratively — generate a Smoke set first, then add more edge cases — without losing manual edits.
+
+---
+
+## Inline Manual Editing
+
+Each generated test case has a **✏** (pencil) button in the card header. Clicking it switches the card into direct editing mode — no AI call, no waiting, no token cost.
+
+**What you can edit inline:**
+- Title, type (dropdown), and priority (dropdown)
+- Preconditions
+- Steps — edit each step, add new rows with **+**, remove with **×**
+- Expected result
+- Tags — click existing tags to remove, type a new tag and press Enter or comma to add
+
+Click **✓ Save** to apply or **Discard** to revert. A **🗑 Delete** button removes the case from the set.
+
+---
+
+## AI-Assisted Edit
+
+Each card also has a **✦ AI** button for model-powered modifications to a single case. The model receives only that test case and your instruction — all other cases stay untouched.
+
+**Example instructions:**
+- `"Add a step to verify the confirmation email is sent to the correct address"`
+- `"Change priority to high and add tags: auth, regression"`
+- `"Split this into two separate cases — one for null input, one for empty string"`
+
+---
+
+## Memory
+
+An optional context block injected into every generation prompt as background knowledge. Useful for project-specific terminology, stack details, known risks, or QA conventions that shouldn't be re-pasted each time.
+
+**Two ways to provide memory:**
+1. Upload a `.json`, `.txt`, or `.md` file via the Memory panel
+2. Type or paste directly into the inline text area below the file drop
+
+**Example content:**
 ```json
 {
   "project": "Nivi Health Platform",
@@ -96,11 +177,17 @@ See [`docs/memory-schema.md`](./docs/memory-schema.md) for full schema reference
 
 ---
 
-## Custom Instructions File
+## Custom Instructions
 
-A plain-text or Markdown file that prepends QA rules and conventions to the generation prompt. Think of it as a persistent system prompt for test generation.
+A plain-text or Markdown block that prepends QA rules and conventions to every generation prompt. Think of it as a persistent system prompt for test generation.
 
-**Example `instructions.txt`:**
+**Two ways to provide instructions:**
+1. Upload a `.txt` or `.md` file via the Custom Instructions panel
+2. Type or paste directly into the inline text area below the file drop
+
+> Note: Selecting a preset (Smoke, Regression, Security) will replace the instructions field with the preset's focus text. Switch to **Custom** or clear the field to write your own.
+
+**Example content:**
 ```
 Always include at least one test case for rate limiting on any API endpoint.
 Tag all authentication-related cases with "auth".
@@ -118,24 +205,18 @@ See [`examples/instructions.txt`](./examples/instructions.txt) for a full exampl
 |---|---|---|
 | **JSON** | Full structured data | Feed into other tools, CI scripts |
 | **Markdown** | Human-readable report | Confluence, Notion, GitHub wikis |
-| **CSV** | Flat table | Excel, Google Sheets, TestRail import |
+| **CSV** | Flat table | Excel, Google Sheets |
+| **TestRail CSV** | Title, Section, Template, Type, Priority, Steps, Expected Result | Direct TestRail import |
+| **XRAY CSV** | Issue ID, Issue Type, Summary, Description, Steps, Expected Result, Labels, Priority | Jira XRAY import |
 
----
-
-## Selective Edit
-
-Each generated test case has an **✎ edit** button. Click it to open an inline instruction field scoped to only that test case. The model receives only the target case and your instruction — no other cases are re-generated or touched.
-
-**Example instructions:**
-- `"Add a step to verify the confirmation email is sent to the correct address"`
-- `"Change priority to high and add tags: auth, regression"`
-- `"Split this into two separate cases — one for null input, one for empty string"`
+All export buttons appear in the output toolbar once test cases are generated.
 
 ---
 
 ## API Key Security
 
-- API keys are stored **only in React component state** — they are never written to disk, localStorage, or sent anywhere except the provider's official API endpoint
+- API keys are stored **only in React component state** by default — never written to disk and never sent anywhere except the provider's official API endpoint
+- **"Remember key in browser"** checkbox (below the key input) is **opt-in** — only when checked is the key written to `localStorage`
 - Keys are masked by default (password input) with a toggle to reveal
 - No key is ever logged or transmitted through any proxy
 
@@ -171,9 +252,9 @@ All models live in the `PROVIDERS` object at the top of `src/App.jsx`. Each prov
 ```js
 gemini: {
   models: [
-    { id: "gemini-2.0-flash",      label: "Gemini 2.0 Flash",      tier: "balanced", desc: "Fast & capable" },
+    { id: "gemini-2.5-pro",   label: "Gemini 2.5 Pro",   tier: "powerful", desc: "Most capable" },
     // add here:
-    { id: "gemini-1.5-pro-002",    label: "Gemini 1.5 Pro 002",    tier: "powerful", desc: "Stable long context" },
+    { id: "gemini-2.5-flash", label: "Gemini 2.5 Flash", tier: "balanced", desc: "Speed + quality" },
   ],
 },
 ```
